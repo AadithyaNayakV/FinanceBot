@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-dotenv
+langchain
+langchain-community
+langchain-text-splitters
+langchain-google-genai
+langchain-chroma
+pillow
+pytesseract
+PyPDF2
+chromadb
+huggingface-hub
+torch
+sentence-transformers
+gunicorn
