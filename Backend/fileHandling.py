@@ -1,9 +1,9 @@
 
 # Load embedder once
 # embedder = SentenceTransformer("all-MiniLM-L6-v2")
-
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from PIL import Image
 import pytesseract
@@ -32,14 +32,12 @@ def process(uploaded_files: list):
     return temp_vector
 
 
-
 def extract_pdf(uploaded_file):
     reader = PdfReader(io.BytesIO(uploaded_file.file.read()))
     text = ""
     for page in reader.pages:
         text += page.extract_text() or ""
     return text.strip()
-
 
 
 def extract_image_file(uploaded_file):
