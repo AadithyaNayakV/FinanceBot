@@ -4,7 +4,7 @@ import { PaperClipIcon } from "@heroicons/react/24/solid";
 function App() {
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState([]);
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([{type:btoa,text:"Hi Iam ANMate How Can I Help You Today?"}]);
   const fileInputRef = useRef(null);
   const chatEndRef = useRef(null);
   const [loading,setloading]=useState(false)
@@ -33,6 +33,8 @@ function App() {
 
     try {
        setQuery('');
+             setMessages((prev) => [...prev, { type: 'user', text: query }]);
+
       const res = await fetch('http://localhost:8000/chat/', {
         method: 'POST',
         body: formData,
@@ -45,13 +47,13 @@ function App() {
 //     resolve(result);
 //   }, 2000);
 // });
-      setMessages((prev) => [...prev, { type: 'user', text: query }, { type: 'bot', text: data.answer }]);
+      setMessages((prev) => [...prev,  { type: 'bot', text: data.answer }]);
       setQuery('');
       setFiles([]);
       setloading(false)
     } catch (err) {
       setloading(true)
-           setMessages((prev) => [...prev, { type: 'user', text: query }, { type: 'bot', text: "Some Error has been Occured ⚠️" }]);
+           setMessages((prev) => [...prev,{ type: 'bot', text: "Some Error has been Occured ⚠️" }]);
 
     }
     finally {
