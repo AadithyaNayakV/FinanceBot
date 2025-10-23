@@ -18,10 +18,13 @@ from fileHandling import *
 from langchain.chains import RetrievalQA
 # from langchain_community.retrievers import EnsembleRetriever
 
-
+from langchain import hub
 # from langchain.chains import create_retrieval_chain
 # from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.schema import BaseRetriever, Document
+# from langchain.messages import SystemMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.prompts import PromptTemplate
 
 class CombinedRetriever(BaseRetriever):
     retrievers: list[BaseRetriever]
@@ -32,6 +35,21 @@ class CombinedRetriever(BaseRetriever):
             results.extend(retriever.get_relevant_documents(query))
         return results
 
+
+system_template ="""
+You are FinBot — an intelligent financial knowledge assistant.
+You answer strictly using financial documents or the finance vector DB.
+If a question is outside finance, respond:
+"Sorry, this question is outside the financial context I was trained on."
+
+Guidelines:
+- No special characters like *, #, @, $, %, etc.
+- Provide clear, accurate, thoughtful answers.
+- Do not invent information not in the documents.
+- If answer not in docs, say: "I don't have that information in the context."
+- Respond in complete sentences and professional tone.
+"""
+# system_message_template = SystemMessagePromptTemplate.from_template(system_template)
 
 VECTOR_DB_PATH = "./vector_db" 
 
@@ -61,7 +79,7 @@ def embed(persist=True):
     )
 
     if persist:
-        db.persist()  # saves to disk
+        db.persist() 
         print("Vector DB persisted to disk.")
 
     return db
@@ -89,36 +107,49 @@ def llm(query:str,files:list)->str:
     llm_model = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
 
     retrievers = []
-    if perm_db:  # your permanent database
+    if perm_db: 
         retrievers.append(perm_db.as_retriever())
-    if temp_db:  # user-uploaded files
+    if temp_db: 
         retrievers.append(temp_db.as_retriever())
 
-    # combined_retriever = CombinedRetriever(retrievers=retrievers)
-
-   
-    # if len(retrievers) > 1:
-    #     results = []
-    #     for r in retrievers:
-    #         results.extend(r.get_relevant_documents(query))
-    #     return results
-        
-    # else:
-    #     combined_retriever = retrievers[0]
     combined_retriever = CombinedRetriever(retrievers=[perm_db.as_retriever(), temp_db.as_retriever() if temp_db else perm_db.as_retriever()])
 
+    chat_prompt_template = ChatPromptTemplate.from_messages([
+        ("system", system_template),
+        ("user", "{question}")
+    ])
+   
+    # prompt = hub.pull("your-prompt-handle")
+  
+    qa_prompt = PromptTemplate(
+        template="""
+    You are FinBot — an intelligent financial knowledge assistant.
+    Answer strictly using financial documents or the finance vector DB.
+    If a question is outside finance, respond:
+    "Sorry, this question is outside the financial context I was trained on."
+    Guidelines:
+    - No special characters like *, #, @, $, %, etc.
+    - Provide clear, accurate, thoughtful answers.
+    - Do not invent information not in the documents.
+    - If answer not in docs, say: "I don’t have that information in the context."
+    - Respond in complete sentences and professional tone.
+
+    Context: {context}
+Question: {question}
+    Answer:
+    """,
+          input_variables=["context", "question"],    # must be "input" in 0.3.x
+    )
     rag_chain = RetrievalQA.from_chain_type(
         llm=llm_model,
         retriever=combined_retriever,
+        chain_type="stuff",
+       chain_type_kwargs={"prompt": qa_prompt},
         # return_source_documents=True
     )
 
-    return rag_chain.run(query)
+    
+    response = rag_chain.run(query)
+    return response
 
-    # question_answer_chain = create_stuff_documents_chain(llm_model)
-    # chain = create_retrieval_chain(retriever=combined_retriever,
-    #     combine_documents_chain=question_answer_chain)
-
-    # result=chain.invoke({"input": query})
-    # return result
 

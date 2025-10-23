@@ -32,7 +32,8 @@ function App() {
     files.forEach((file) => formData.append('files', file));
 
     try {
-       setQuery('');
+        setQuery('');
+      setFiles([]);
              setMessages((prev) => [...prev, { type: 'user', text: query }]);
 
       const res = await fetch('http://localhost:8000/chat/', {
