@@ -21,5 +21,5 @@ app.add_middleware(
 @app.post("/chat")
 async def chat(query: str = Form(...),  files: Optional[List[UploadFile]] = File(None) ):
     
-    res = llm(query=query, files=files)
-    return {"answer": res}
+    res,source = llm(query=query, files=files)
+    return {"answer": res,"source":source}
