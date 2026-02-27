@@ -7,7 +7,7 @@ redis_client = redis.Redis(host='localhost', port=6379, decode_responses=False)
 embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 DIM = 384  # dimension for MiniLM-L6-v2
 from redis.commands.search.field import VectorField, TextField
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.index_definition import IndexDefinition, IndexType
 
 def create_redis_index():
     try:
@@ -35,7 +35,10 @@ create_redis_index()
 def data_save_in_cache(query, answer):
     vec = np.array(embedding_model.embed_query(query), dtype=np.float32).tobytes()
     key = f"cache:{hash(query)}"
-    redis_client.hset(key, mapping={"vector": vec, "answer": answer})
+    if redis_client.exists(key):
+        return  
+    else:
+        redis_client.hset(key, mapping={"vector": vec, "answer": answer})
 
 
 

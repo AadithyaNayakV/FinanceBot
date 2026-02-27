@@ -25,7 +25,9 @@ function App() {
    const handleSubmit = async (e) => {
     setloading(true)
     e.preventDefault();
-    if (!query) return;
+    if (!query) { 
+      alert("Enter The query");
+      return;}
 
     const formData = new FormData();
     formData.append('query', query);
@@ -48,7 +50,8 @@ function App() {
 //     resolve(result);
 //   }, 2000);
 // });
-      setMessages((prev) => [...prev,  { type: 'bot', text: data.answer }]);
+      setMessages((prev) => [...prev, { type: "bot", text: data.answer },
+  { type: "bot", text: `📎 Source: ${data.source}` }]);
       setQuery('');
       setFiles([]);
       setloading(false)
@@ -76,6 +79,8 @@ function App() {
             }`}
             style={{ maxWidth: "70%" }} 
           >
+            {/* {msg.type==="user"&&files?<span>{files}</span>:""} */}
+
             {msg.text}
           </div>
         ))}

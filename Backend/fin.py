@@ -27,6 +27,7 @@ import os
 os.environ["GOOGLE_API_KEY"]=os.getenv('GOOGLE_API_KEY')
 import numpy as np
 from reddis import *
+from web_rag import *
 
 embeddings_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
@@ -96,107 +97,66 @@ def load_vector_db():
         return embed(persist=True)
     
 perm_db=load_vector_db()
+print("Vector count:", perm_db._collection.count())
 
 def get_embedding(text: str):
     """Convert text to vector"""
     return np.array(embeddings_model.embed_query(text))
 
-def compare(v1, v2):
-    get_embedding(v1,v2)
-    """Compute cosine similarity between 2 vectors"""
-    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-
-def llm(query:str,files:list)->str:
-    best_ans=None
-    source=None
-    if files:
-        temp_db=process(files)
-    else:
-        temp_db = None
+def llm(query: str, files: list):
 
     llm_model = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
-    qa_prompt = PromptTemplate(
-            template="""
-        You are FinBot — an intelligent financial knowledge assistant.
-        Answer strictly using financial documents or the finance vector DB.
-        If a question is outside finance, respond:
-        "Sorry, this question is outside the financial context I was trained on."
-        Guidelines:
-        - No special characters like *, #, @, $, %, etc.
-        - Provide clear, accurate, thoughtful answers.
-        - Do not invent information not in the documents.
-        - If answer not in docs, say: "I don’t have that information in the context."
-        - Respond in complete sentences and professional tone.
 
-        Context: {context}
-    Question: {question}
-        Answer:
-        """,
-            input_variables=["context", "question"],    # must be "input" in 0.3.x
-        )
-    if temp_db: 
-        retrievers.append(temp_db.as_retriever())
-        chat_prompt_template = ChatPromptTemplate.from_messages([
-        ("system", system_template),
-        ("user", "{question}")
-    ])
-   
-    # prompt = hub.pull("your-prompt-handle")
-  
-        
+    qa_prompt = PromptTemplate(
+        template="""
+You are FinBot — an intelligent financial knowledge assistant.
+Answer strictly using financial documents or the finance vector DB.
+If a question is outside finance, respond:
+"Sorry, this question is outside the financial context I was trained on."
+
+Context: {context}
+Question: {question}
+Answer:
+""",
+        input_variables=["context", "question"],
+    )
+
+    # ----------------------------
+    # 1️⃣ CHECK CACHE
+    # ----------------------------
+    cached = data_in_cache(query)
+    if cached:
+        print("Answer from cache")
+        return cached, "cache"
+
+    # ----------------------------
+    # 2️⃣ CHECK INTERNAL VECTOR DB
+    # ----------------------------
+    docs = perm_db.similarity_search_with_score(query, k=2)
+
+    print("DEBUG SCORES:", docs)
+
+    if docs and docs[0][1] <= 0.85:   # good threshold for MiniLM
+
         rag_chain = RetrievalQA.from_chain_type(
             llm=llm_model,
-            retriever=temp_db,
+            retriever=perm_db.as_retriever(search_kwargs={"k": 2}),
             chain_type="stuff",
-        chain_type_kwargs={"prompt": qa_prompt},
-            # return_source_documents=True
+            chain_type_kwargs={"prompt": qa_prompt},
         )
 
-        
         response = rag_chain.run(query)
-        score=compare(query,response)
-        if(score>0.85):
-            print("ans frm your file")
-            best_ans=response
-            source="Your File"
-        
-    else :
-        cc=data_in_cache(query)
-        if(cc):
-            if compare(query,cc)>0.85:
-                print("ans frm your cache")
-                best_ans=cc
-                source="cache"
-        else:
-            retrievers = []
-            if cc:
-                retrievers.append(cc)
-            elif perm_db: 
-                retrievers.append(perm_db.as_retriever())
 
-            combined_retriever = CombinedRetriever(retrievers=[perm_db.as_retriever(), temp_db.as_retriever() if temp_db else perm_db.as_retriever()])
+        data_save_in_cache(query, response)
 
-            chat_prompt_template = ChatPromptTemplate.from_messages([
-                ("system", system_template),
-                ("user", "{question}")
-            ])
-        
-            # prompt = hub.pull("your-prompt-handle"
-            rag_chain = RetrievalQA.from_chain_type(
-                llm=llm_model,
-                retriever=combined_retriever,
-                chain_type="stuff",
-            chain_type_kwargs={"prompt": qa_prompt},
-                # return_source_documents=True
-            )
+        print("Answer from internal DB")
+        return response, "Internal Vector DB"
 
-            
-            response = rag_chain.run(query)
-            data_save_in_cache(query,response)
-            best_ans=response
-            source="outside"
-            print("ans frm your outside")
-            return best_ans,source
+    # # ----------------------------
+    # # 3️⃣ WEB FALLBACK
+    # # ----------------------------
+    print("No strong match in DB → Going to Web")
 
+    answer, sources = web_search_pipeline(query)
 
-
+    return answer, sources

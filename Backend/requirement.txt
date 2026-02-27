@@ -22,3 +22,5 @@ fastapi[all]
 redis
 numpy
 redisearch
+trafilatura
+google-search-results
