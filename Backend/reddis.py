@@ -2,8 +2,11 @@ import redis
 import numpy as np
 from langchain_huggingface import HuggingFaceEmbeddings
 from redis.commands.search.query import Query
+import os
 
-redis_client = redis.Redis(host='localhost', port=6379, decode_responses=False)
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=False)
 embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 DIM = 384  # dimension for MiniLM-L6-v2
 from redis.commands.search.field import VectorField, TextField
