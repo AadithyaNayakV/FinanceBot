@@ -1,10 +1,29 @@
-# Terminal 1: Backend
-cd Backend
+====================================================================
+PROJECT 1: FinanceBot (AI Document Analysis + Web Search RAG)
+====================================================================
+# Terminal 1: FinanceBot Backend (Runs on port 8001)
+cd c:\Users\aadit\OneDrive\Desktop\FinanceBot\Backend
 .\venv\Scripts\python.exe -m uvicorn app:app --host 0.0.0.0 --port 8001 --reload
 
-# Terminal 2: Frontend
-cd Frontend
+# Terminal 2: FinanceBot Frontend (Runs on port 5174)
+cd c:\Users\aadit\OneDrive\Desktop\FinanceBot\Frontend
 npm run dev
 
-# Optional: Redis Stack for caching (via Docker)
+* Note: FinanceBot has a built-in "GST Invoicer" button in the top navbar 
+  that directly navigates to http://localhost:5173!
+
+====================================================================
+PROJECT 2: GST Invoicer (Purchase Register vs GSTR-2B Reconciler)
+====================================================================
+# Terminal 3: GST Invoicer Backend (Runs on port 8000)
+cd c:\Users\aadit\OneDrive\Desktop\GST_INVOICE\backend
+.\venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 4: GST Invoicer Frontend (Runs on port 5173)
+cd c:\Users\aadit\OneDrive\Desktop\GST_INVOICE\frontend
+npm run dev
+
+====================================================================
+OPTIONAL: Redis Stack for Cache (Docker)
+====================================================================
 docker run -d --name redis-stack -p 6379:6379 redis/redis-stack-server:latest
