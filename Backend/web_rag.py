@@ -28,11 +28,21 @@ TRUSTED_DOMAINS = [
     "economictimes.indiatimes.com"
 ]
 
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
+_embeddings = None
+_llm = None
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+def get_web_embeddings():
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    return _embeddings
+
+def get_web_llm():
+    global _llm
+    if _llm is None:
+        model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+        _llm = ChatGoogleGenerativeAI(model=model)
+    return _llm
 
 # -----------------------------
 # 1️⃣ Rewrite Query
@@ -42,37 +52,55 @@ def rewrite_query(user_question: str) -> str:
     """
     Use LLM to rewrite into optimized search query.
     """
-    prompt = f"""
+    try:
+        prompt = f"""
 Rewrite the following question into a concise Google search query.
 Question: {user_question}
 Search Query:
 """
-    response = llm.invoke(prompt)
-    return response.content.strip()
+        response = get_web_llm().invoke(prompt)
+        content = response.content
+        if isinstance(content, list):
+            content = "".join(str(part) for part in content)
+        return str(content).strip()
+    except Exception as e:
+        print(f"[WARN] Error rewriting query: {e}")
+        return user_question
 
 # -----------------------------
 # 2️⃣ Search Using SerpAPI
 # -----------------------------
 
 def search_google(query: str):
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": SERPAPI_KEY,
-        "num": 5
-    }
+    if not SERPAPI_KEY:
+        print("[WARN] SERPAPI_KEY is not configured.")
+        return [], []
+    try:
+        params = {
+            "engine": "google",
+            "q": query,
+            "api_key": SERPAPI_KEY,
+            "num": 5
+        }
 
-    search = GoogleSearch(params)
-    results = search.get_dict()
-    print("RAW RESULTS:", results)
+        search = GoogleSearch(params)
+        results = search.get_dict()
 
-    links = []
-    for item in results.get("organic_results", []):
-        link = item.get("link")
-        if link:
-            links.append(link)
+        links = []
+        snippets = []
+        for item in results.get("organic_results", []):
+            link = item.get("link")
+            title = item.get("title", "")
+            snippet = item.get("snippet", "")
+            if link:
+                links.append(link)
+                if snippet:
+                    snippets.append(f"Title: {title}\nURL: {link}\nSnippet: {snippet}")
 
-    return links
+        return links, snippets
+    except Exception as e:
+        print(f"[WARN] SerpAPI search error: {e}")
+        return [], []
 
 # -----------------------------
 # 3️⃣ Domain Filter
@@ -122,9 +150,7 @@ def embed_web_content(text_list):
     )
 
     documents = splitter.create_documents(text_list)
-
-    temp_db = Chroma.from_documents(documents, embeddings)
-
+    temp_db = Chroma.from_documents(documents, get_web_embeddings())
     return temp_db
 
 # -----------------------------
@@ -132,7 +158,6 @@ def embed_web_content(text_list):
 # -----------------------------
 
 def generate_web_answer(user_question, temp_db):
-
     qa_prompt = PromptTemplate(
         template="""
 You are a financial assistant.
@@ -151,51 +176,72 @@ Answer:
     )
 
     rag_chain = RetrievalQA.from_chain_type(
-        llm=llm,
+        llm=get_web_llm(),
         retriever=temp_db.as_retriever(),
         chain_type="stuff",
         chain_type_kwargs={"prompt": qa_prompt}
     )
 
-    return rag_chain.run(user_question)
+    res_obj = rag_chain.invoke({"query": user_question})
+    ans = res_obj.get("result", "") if isinstance(res_obj, dict) else res_obj
+    if isinstance(ans, list):
+        ans = "".join(str(part) for part in ans)
+    return str(ans)
 
 # -----------------------------
 # 🚀 MAIN WEB PIPELINE
 # -----------------------------
 
 def web_search_pipeline(user_question: str):
+    try:
+        print("[INFO] Rewriting query...")
+        search_query = rewrite_query(user_question)
 
-    print("Rewriting query...")
-    search_query = rewrite_query(user_question)
+        print(f"[INFO] Searching Google for: {search_query}")
+        links, snippets = search_google(search_query)
 
-    print("Searching Google...")
-    links = search_google(search_query)
+        collected_articles = []
+        sources = []
 
-    print("Filtering domains...")
-    # trusted_links = filter_domains(links)
-    trusted_links = links
+        for link in links:
+            print(f"[INFO] Scraping: {link}")
+            article = scrape_article(link)
 
-    collected_articles = []
-    sources = []
+            if article:
+                collected_articles.append(article)
+                sources.append(link)
 
-    for link in trusted_links:
-        print(f"Scraping: {link}")
-        article = scrape_article(link)
+            if len(collected_articles) >= 3:
+                break
 
-        if article:
-            collected_articles.append(article)
-            sources.append(link)
+        if not collected_articles:
+            if snippets:
+                print("[INFO] Using Google search snippets directly...")
+                llm = get_web_llm()
+                snippet_context = "\n\n".join(snippets[:5])
+                prompt = f"""You are FinBot — an expert financial research assistant.
+Answer the user's question using the following search snippets from Google.
+Keep it factual, helpful, and concise.
 
-        if len(collected_articles) >= 3:
-            break
+Context:
+{snippet_context}
 
-    if not collected_articles:
-        return "No reliable web sources found.", []
+Question: {user_question}
+Answer:"""
+                res = llm.invoke(prompt)
+                content = res.content
+                if isinstance(content, list):
+                    content = "".join(str(part) for part in content)
+                return str(content).strip(), links[:3]
+            return "I couldn't find relevant financial information from the web search.", []
 
-    print("Embedding web content...")
-    temp_db = embed_web_content(collected_articles)
+        print("[INFO] Embedding web content...")
+        temp_db = embed_web_content(collected_articles)
 
-    print("Generating answer...")
-    answer = generate_web_answer(user_question, temp_db)
+        print("[INFO] Generating answer...")
+        answer = generate_web_answer(user_question, temp_db)
 
-    return answer, sources
+        return answer, sources
+    except Exception as e:
+        print(f"[WARN] Web search pipeline failed: {e}")
+        return f"Error searching the web: {e}", []

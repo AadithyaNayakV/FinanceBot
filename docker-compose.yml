@@ -14,14 +14,14 @@ services:
       dockerfile: Dockerfile
     container_name: financebot-backend
     ports:
-      - "8000:8000"
+      - "8001:8001"
     env_file:
       - path: .env
         required: false
       - path: ./Backend/.env
         required: false
     environment:
-      - PORT=8000
+      - PORT=8001
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     depends_on:

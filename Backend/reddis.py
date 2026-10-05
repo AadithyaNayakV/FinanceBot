@@ -1,7 +1,5 @@
 import redis
 import numpy as np
-from langchain_huggingface import HuggingFaceEmbeddings
-from redis.commands.search.query import Query
 import os
 
 REDIS_URL = os.getenv("REDIS_URL")
@@ -23,26 +21,33 @@ try:
             password=REDIS_PASSWORD,
             ssl=REDIS_SSL,
             decode_responses=False,
-            socket_timeout=5
+            socket_timeout=2
         )
     else:
-        redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=False, socket_timeout=5)
+        redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=False, socket_timeout=2)
     
     redis_client.ping()
-    print("Redis connected successfully ✅")
+    print("[INFO] Redis connected successfully.")
 except Exception as e:
-    print(f"⚠️ Redis connection warning: {e}. Running without Redis cache.")
+    print(f"[WARN] Redis connection warning: {e}. Running without Redis cache.")
     redis_client = None
 
-embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 DIM = 384  # dimension for MiniLM-L6-v2
-from redis.commands.search.field import VectorField, TextField
-from redis.commands.search.index_definition import IndexDefinition, IndexType
+_embedding_model = None
+
+def get_redis_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        from langchain_huggingface import HuggingFaceEmbeddings
+        _embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    return _embedding_model
 
 def create_redis_index():
     if not redis_client:
         return
     try:
+        from redis.commands.search.field import VectorField, TextField
+        from redis.commands.search.index_definition import IndexDefinition, IndexType
         redis_client.ft("cache_index").create_index(
             [
                 VectorField("vector", "FLAT", {
@@ -54,36 +59,36 @@ def create_redis_index():
             ],
             definition=IndexDefinition(prefix=["cache:"], index_type=IndexType.HASH)
         )
-        print("Redis vector index created ✅")
+        print("[INFO] Redis vector index created.")
     except Exception as e:
         if "Index already exists" in str(e):
             pass  # ignore
         else:
-            print(f"⚠️ Redis vector index warning: {e}")
+            print(f"[WARN] Redis vector index warning: {e}")
 
 create_redis_index()
 
-        
 def data_save_in_cache(query, answer):
     if not redis_client:
         return
     try:
-        vec = np.array(embedding_model.embed_query(query), dtype=np.float32).tobytes()
+        model = get_redis_embedding_model()
+        vec = np.array(model.embed_query(query), dtype=np.float32).tobytes()
         key = f"cache:{hash(query)}"
         if redis_client.exists(key):
             return  
         else:
             redis_client.hset(key, mapping={"vector": vec, "answer": answer})
     except Exception as e:
-        print(f"⚠️ Failed to cache in Redis: {e}")
-
-
+        print(f"[WARN] Failed to cache in Redis: {e}")
 
 def data_in_cache(query):
     if not redis_client:
         return None
     try:
-        vec = np.array(embedding_model.embed_query(query), dtype=np.float32).tobytes()
+        from redis.commands.search.query import Query
+        model = get_redis_embedding_model()
+        vec = np.array(model.embed_query(query), dtype=np.float32).tobytes()
         q = (
             Query("*=>[KNN 1 @vector $vec AS score]")
             .sort_by("score")
@@ -97,5 +102,6 @@ def data_in_cache(query):
             if score < 0.2:  # adjust threshold for similarity
                 return results.docs[0].answer
     except Exception as e:
-        print(f"⚠️ Redis search error: {e}")
+        print(f"[WARN] Redis search error: {e}")
     return None
+

@@ -18,11 +18,12 @@ const INITIAL_MESSAGE = {
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 };
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:8001").replace(/\/+$/, "");
 
 function MainChat() {
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState([]);
+  const [activeDocumentName, setActiveDocumentName] = useState(null);
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
   const [loading, setLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -60,11 +61,20 @@ function MainChat() {
     if (e.target.files && e.target.files.length > 0) {
       setFiles((prev) => [...prev, ...Array.from(e.target.files)]);
     }
+    e.target.value = "";
   };
 
   const handleRemoveFile = (indexToRemove) => {
     setFiles((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
+
+  const handleClearDocument = async () => {
+    setActiveDocumentName(null);
+    try {
+      await fetch(`${API_BASE_URL}/reset`, { method: "POST" });
+    } catch (e) {}
+  };
+
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -110,6 +120,10 @@ function MainChat() {
     setFiles([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
+    }
+
+    if (currentFiles.length > 0) {
+      setActiveDocumentName(currentFiles.map((f) => f.name).join(", "));
     }
 
     setLoading(true);
@@ -167,6 +181,8 @@ function MainChat() {
     setMessages([INITIAL_MESSAGE]);
     setFiles([]);
     setQuery("");
+    setActiveDocumentName(null);
+    fetch(`${API_BASE_URL}/reset`, { method: "POST" }).catch(() => {});
   };
 
   return (
@@ -231,6 +247,26 @@ function MainChat() {
 
         {/* 3D Floating Input Bar */}
         <div className="py-3 sm:py-4">
+          {/* Active Document Status Badge */}
+          {activeDocumentName && (
+            <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-600/70 px-3 py-1.5 rounded-xl text-xs text-emerald-900 dark:text-emerald-200 mb-2 shadow-sm animate-fade-in">
+              <div className="flex items-center gap-2 truncate">
+                <span className="font-bold px-2 py-0.5 rounded bg-emerald-200 dark:bg-emerald-800 text-[10px] uppercase tracking-wider text-emerald-900 dark:text-emerald-100">
+                  Priority 1 Active
+                </span>
+                <span className="truncate font-semibold">{activeDocumentName}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleClearDocument}
+                className="text-emerald-700 hover:text-red-500 dark:text-emerald-400 dark:hover:text-red-400 font-bold ml-2 px-1 text-sm hover:scale-110 transition-transform"
+                title="Unload active document"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           <form
             onSubmit={handleSubmit}
             className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-300 dark:border-slate-700 shadow-xl transition-all focus-within:border-emerald-500 dark:focus-within:border-emerald-500"

@@ -1,21 +1,16 @@
 from fastapi import FastAPI, UploadFile, File, Form
-from typing import List,Optional
+from typing import List, Optional
 from fin import llm
 from fastapi.middleware.cors import CORSMiddleware
-
 import os
 
 app = FastAPI(title="FinanceBot API")
 
-# Allow CORS for localhost and deployed frontend (e.g. Vercel)
-cors_origins_env = os.getenv("CORS_ORIGINS", "*")
-origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
-
+# Universal CORS support for all clients and ports
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins if origins != ["*"] else ["*"],
-    allow_origin_regex=r".*" if origins == ["*"] else None,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -29,11 +24,36 @@ def health_check():
     return {"status": "healthy"}
 
 @app.post("/chat")
-async def chat(query: str = Form(...),  files: Optional[List[UploadFile]] = File(None) ):
-    res,source = llm(query=query, files=files)
-    return {"answer": res,"source":source}
+async def chat(
+    query: str = Form(""),
+    files: Optional[List[UploadFile]] = File(None)
+):
+    processed_files = []
+    if files:
+        for f in files:
+            if f and f.filename:
+                try:
+                    content = await f.read()
+                    if content:
+                        processed_files.append({
+                            "filename": f.filename,
+                            "content": content,
+                            "content_type": f.content_type
+                        })
+                except Exception as e:
+                    print(f"[WARN] Error reading uploaded file {f.filename}: {e}")
 
-# Mount Gradio interface for Hugging Face Spaces Gradio SDK
+    res, source = llm(query=query, files=processed_files if processed_files else None)
+    return {"answer": res, "source": source}
+
+
+@app.post("/reset")
+def reset_session():
+    import fin
+    fin._active_uploaded_doc = None
+    return {"status": "ok", "message": "Active document session reset"}
+
+# Optional Gradio interface if installed
 try:
     import gradio as gr
 
@@ -46,12 +66,12 @@ try:
         title="FinanceBot AI",
         description="FinanceBot Backend & AI Engine. You can interact here or via your Vercel frontend."
     )
-    # Mount Gradio UI at root /
-    app = gr.mount_gradio_app(app, demo, path="/")
+    # Mount Gradio UI at /gradio to avoid conflicting with root API
+    app = gr.mount_gradio_app(app, demo, path="/gradio")
 except Exception as e:
-    print(f"Gradio interface initialization note: {e}")
+    print(f"[INFO] Gradio interface note: {e}")
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 7860))
+    port = int(os.getenv("PORT", 8001))
     uvicorn.run("app:app", host="0.0.0.0", port=port)
