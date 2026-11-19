@@ -29,17 +29,17 @@ export default function Navbar({ onClearChat, messageCount }) {
         {/* Right Actions: GST Invoicer Nav, Clear Chat & Theme Switcher */}
         <div className="flex items-center gap-2.5 sm:gap-3">
           {/* Quick Switch Button to GST Invoicer on localhost:5173 */}
-          {/* <a
-            href="http://localhost:5173"
+          <a
+            href="https://invoice-checker-omega.vercel.app/"
             target="_blank"
             rel="noopener noreferrer"
             title="Open GST Invoicer (Purchase Reg vs GSTR-2B on port 5173)"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 transition-all"
-          > */}
-            {/* <Receipt className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline"></span>
-            <ExternalLink className="w-3 h-3 opacity-80" /> */}
-          {/* </a> */}
+          > 
+           <Receipt className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">GST Invoice</span>
+            <ExternalLink className="w-3 h-3 opacity-80" /> 
+           </a> 
 
           {messageCount > 1 && (
             <button
